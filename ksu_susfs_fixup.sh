@@ -166,16 +166,20 @@ fi
 # [SHARED] selinux/rules.c — susfs SID init calls
 # ==========================================================================
 if [ -f "$RULES_C" ] && ! grep -q "susfs_set_zygote_sid" "$RULES_C" 2>/dev/null; then
-    if [ -f "$SELINUX_H" ]; then
-        for fn in susfs_set_init_sid susfs_set_ksu_sid susfs_set_zygote_sid; do
-            grep -q "$fn" "$SELINUX_H" 2>/dev/null || \
-                sed -i "/^#endif/i void ${fn}(void);" "$SELINUX_H"
-        done
+    if grep -q "susfs_set_batch_sid" "$RULES_C" 2>/dev/null; then
+        echo "[SUSFS-Fixup] selinux/rules.c: Using modern susfs_set_batch_sid"
+    else
+        if [ -f "$SELINUX_H" ]; then
+            for fn in susfs_set_init_sid susfs_set_ksu_sid susfs_set_zygote_sid; do
+                grep -q "$fn" "$SELINUX_H" 2>/dev/null || \
+                    sed -i "/^#endif/i void ${fn}(void);" "$SELINUX_H"
+            done
+        fi
+        if grep -q "reset_avc_cache();" "$RULES_C" 2>/dev/null; then
+            sed -i 's/^[ \t]*reset_avc_cache();/\tsusfs_set_init_sid();\n\tsusfs_set_ksu_sid();\n\tsusfs_set_zygote_sid();\n\treset_avc_cache();/' "$RULES_C"
+        fi
+        echo "[SUSFS-Fixup] selinux/rules.c: OK"
     fi
-    if grep -q "reset_avc_cache();" "$RULES_C" 2>/dev/null; then
-        sed -i 's/^[ \t]*reset_avc_cache();/\tsusfs_set_init_sid();\n\tsusfs_set_ksu_sid();\n\tsusfs_set_zygote_sid();\n\treset_avc_cache();/' "$RULES_C"
-    fi
-    echo "[SUSFS-Fixup] selinux/rules.c: OK"
 fi
 
 # ==========================================================================
