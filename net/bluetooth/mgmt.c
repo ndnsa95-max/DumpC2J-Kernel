@@ -2085,7 +2085,7 @@ static void set_le_complete(struct hci_dev *hdev, void *data, int err)
 	if (err == -ECANCELED || !mgmt_pending_valid(hdev, data))		return;
 
 	if (status) {
-		mgmt_cmd_status(cmd->sk, cmd->hdev->id, cmd->opcode, status);
+		mgmt_cmd_status(cmd->sk, hdev->id, cmd->opcode, status);
 		goto done;
 	}
 
