@@ -945,7 +945,7 @@ fix_ksu_next_susfs_umount() {
             # Delete the old-style loop call block completely
             sed -i '/#ifdef CONFIG_KSU_SUSFS_SUS_PATH/,/#endif/d' "$SETUID_HOOK_C"
             # Inject new deferred workqueue block before susfs_set_current_proc_umounted()
-            sed -i '/susfs_set_current_proc_umounted/i #ifdef CONFIG_KSU_SUSFS_SUS_PATH\n\t\t{\n\t\t\textern struct work_struct susfs_extra_works;\n\t\t\tschedule_work(\&susfs_extra_works);\n\t\t}\n#endif' "$SETUID_HOOK_C"
+            sed -i '/susfs_set_current_proc_umounted/i #ifdef CONFIG_KSU_SUSFS_SUS_PATH\n\t\t{\n\t\t\textern struct work_struct susfs_extra_works;\n\t\t\tschedule_work(\&susfs_extra_works);\n\t\t\tflush_work(\&susfs_extra_works);\n\t\t}\n#endif' "$SETUID_HOOK_C"
         fi
 
         if ! grep -q "susfs_set_current_proc_umounted" "$SETUID_HOOK_C" 2>/dev/null; then
@@ -961,6 +961,7 @@ fix_ksu_next_susfs_umount() {
 \t\t{\
 \t\t\textern struct work_struct susfs_extra_works;\
 \t\t\tschedule_work(&susfs_extra_works);\
+\t\t\tflush_work(&susfs_extra_works);\
 \t\t}\
 #endif\
 \t\tsusfs_set_current_proc_umounted();\
@@ -1192,6 +1193,55 @@ fix_hide_c('$HIDE_C')
 "
 }
 
+# ==========================================================================
+# [SHARED] fix_app_zygote_bypass — Allow app_zygote in KernelSU
+# ==========================================================================
+fix_app_zygote_bypass() {
+    local SELINUX_C="$KSU_KERNEL/selinux/selinux.c"
+    local SELINUX_H="$KSU_KERNEL/selinux/selinux.h"
+    local ALLOWLIST_H="$KSU_KERNEL/policy/allowlist.h"
+    
+    # Patch allowlist.h to support app_zygote isolated UIDs
+    if [ -f "$ALLOWLIST_H" ]; then
+        if ! grep -q "FIRST_APP_ZYGOTE_ISOLATED_UID" "$ALLOWLIST_H" 2>/dev/null; then
+            echo "[SUSFS-Fixup] Patching allowlist.h to support app_zygote isolated UIDs"
+            sed -i '/#define FIRST_ISOLATED_UID/i #define FIRST_APP_ZYGOTE_ISOLATED_UID 90000\n#define LAST_APP_ZYGOTE_ISOLATED_UID 98999' "$ALLOWLIST_H"
+            sed -i 's/return appid >= FIRST_ISOLATED_UID && appid <= LAST_ISOLATED_UID;/return (appid >= FIRST_ISOLATED_UID \&\& appid <= LAST_ISOLATED_UID) || (appid >= FIRST_APP_ZYGOTE_ISOLATED_UID \&\& appid <= LAST_APP_ZYGOTE_ISOLATED_UID);/g' "$ALLOWLIST_H"
+        else
+            echo "[SUSFS-Fixup] allowlist.h: app_zygote isolated UID range already fixed"
+        fi
+    fi
+
+    if [ ! -f "$SELINUX_C" ] || [ ! -f "$SELINUX_H" ]; then return; fi
+
+    if grep -q "APP_ZYGOTE_CONTEXT" "$SELINUX_H" 2>/dev/null; then
+        echo "[SUSFS-Fixup] selinux.c: app_zygote bypass already fixed"
+        return
+    fi
+
+    echo "[SUSFS-Fixup] Patching selinux to support app_zygote for isolated services"
+
+    # Add APP_ZYGOTE_CONTEXT to selinux.h
+    sed -i '/#define ZYGOTE_CONTEXT/a #define APP_ZYGOTE_CONTEXT "u:r:app_zygote:s0"' "$SELINUX_H"
+
+    # Add cached_app_zygote_sid to selinux.c
+    sed -i '/static u32 cached_zygote_sid/a static u32 cached_app_zygote_sid __read_mostly = 0;' "$SELINUX_C"
+
+    # Cache the sid
+    sed -i '/err = security_secctx_to_secid(ZYGOTE_CONTEXT/i \
+\terr = security_secctx_to_secid(APP_ZYGOTE_CONTEXT, strlen(APP_ZYGOTE_CONTEXT), \&cached_app_zygote_sid);\
+\tif (err) {\
+\t\tpr_warn("Failed to cache app_zygote SID: %d\\n", err);\
+\t\tcached_app_zygote_sid = 0;\
+\t} else {\
+\t\tpr_info("Cached app_zygote SID: %u\\n", cached_app_zygote_sid);\
+\t}\
+' "$SELINUX_C"
+
+    # Modify is_zygote to also return true for app_zygote
+    sed -i 's/return is_sid_match(cred, cached_zygote_sid, ZYGOTE_CONTEXT);/return is_sid_match(cred, cached_zygote_sid, ZYGOTE_CONTEXT) || is_sid_match(cred, cached_app_zygote_sid, APP_ZYGOTE_CONTEXT);/g' "$SELINUX_C"
+}
+
 case "$MANAGER" in
     resukisu|sukisu|yukisu|mambosu)
         fix_sulog_type_mismatch
@@ -1206,6 +1256,7 @@ case "$MANAGER" in
         fix_dirty_sepolicy
         fix_dirty_sepolicy_seqno
         fix_backup_sepolicy_leak
+        fix_app_zygote_bypass
         # If it still has kprobe supercall, fix it, otherwise use next's
         if [ -f "$SUPERCALL_C" ] && grep -q "reboot_handler_pre" "$SUPERCALL_C" 2>/dev/null; then
             fix_kprobe_supercall
@@ -1238,6 +1289,7 @@ SULOG_EXECVE_EOF
         fix_dirty_sepolicy
         fix_dirty_sepolicy_seqno
         fix_backup_sepolicy_leak
+        fix_app_zygote_bypass
         ;;
     ksu-next)
         fix_ksu_next_kbuild
@@ -1249,6 +1301,7 @@ SULOG_EXECVE_EOF
         fix_dirty_sepolicy
         fix_dirty_sepolicy_seqno
         fix_backup_sepolicy_leak
+        fix_app_zygote_bypass
         # Fix adb_root call signature mismatch in syscall_event_bridge.c
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
             sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
@@ -1287,6 +1340,8 @@ SULOG_EXECVE_EOF
             sed -i 's|ret = ksu_handle_execve_sucompat(filename_user, orig_nr, regs);|ret = 0; // bypassed|g' "$BRIDGE_C"
             echo "[SUSFS-Fixup] syscall_event_bridge.c: Bypassed deprecated ksu_handle_execve_sucompat"
         fi
+        
+        fix_app_zygote_bypass
         ;;
     *)
         echo "[SUSFS-Fixup] Unknown manager '$MANAGER' — applying best-effort fixes"
@@ -1300,6 +1355,7 @@ SULOG_EXECVE_EOF
             fix_ksu_next_supercall
             fix_ksu_next_ksud
         fi
+        fix_app_zygote_bypass
         # Fix adb_root call signature mismatch in syscall_event_bridge.c (for latest official ksu)
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
             sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
