@@ -51,6 +51,23 @@ for arg in "$@"; do
 done
 
 # ==========================================
+# Non-Interactive Mode (Defaults)
+# ==========================================
+if [ "$#" -gt 0 ]; then
+    NON_INTERACTIVE=1
+    [ -z "$HZ" ] && HZ=250
+    [ -z "$HARDENED" ] && HARDENED="off"
+    [ -z "$VARIANT" ] && VARIANT="stock"
+    [ -z "$ROOT" ] && [ "$VARIANT" != "stock" ] && ROOT="ksu-next"
+    [ -z "$KPM" ] && KPM="off"
+    [ -z "$LTO_TYPE" ] && LTO_TYPE="thin"
+    [ -z "$BYPASSCHARGING" ] && BYPASSCHARGING="off"
+    [ -z "$DROIDSPACES" ] && DROIDSPACES="off"
+    [ -z "$DEBUG_MODE" ] && DEBUG_MODE="off"
+else
+    NON_INTERACTIVE=0
+fi
+# ==========================================
 # Paths
 # ==========================================
 KERNEL_DIR=$(pwd)
@@ -131,7 +148,7 @@ if [ "$VARIANT" != "stock" ] && echo "$KPM_SUPPORTED_ROOTS" | grep -qw "$ROOT"; 
         [ "${_c:-1}" == "2" ] && KPM="on" || KPM="off"
     fi
     if [ "$KPM" == "on" ] && [ -z "$KPM_SUPERKEY" ]; then
-        if [ -t 0 ]; then
+        if [ -t 0 ] && [ "$NON_INTERACTIVE" != "1" ]; then
             read -p "Enter KPM SuperKey (or leave empty to auto-generate): " KPM_SUPERKEY
         fi
         if [ -z "$KPM_SUPERKEY" ]; then

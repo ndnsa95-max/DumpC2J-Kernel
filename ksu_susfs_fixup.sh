@@ -817,6 +817,70 @@ static struct work_struct stop_input_hook_work;' "$KSUD_INT_C"
         sed -i '/^extern int ksu_handle_execveat_init/d' "$KSUD_INT_C"
     fi
 
+    # Fix broken ksu_handle_vfs_fstat / ksu_sys_fstat / ksu_sys_read / kprobes
+    if grep -q "void ksu_handle_vfs_fstat(int fd, loff_t \*kstat_size_ptr)" "$KSUD_INT_C" 2>/dev/null; then
+        sed -i '/void ksu_handle_vfs_fstat(int fd, loff_t \*kstat_size_ptr)/,/^}/c\
+static long (*orig_sys_fstat)(const struct pt_regs *regs);\
+static long ksu_sys_fstat(const struct pt_regs *regs)\
+{\
+    unsigned int fd = PT_REGS_PARM1(regs);\
+    void __user *statbuf = (void __user *)PT_REGS_PARM2(regs);\
+    bool is_rc = false;\
+    long ret;\
+\
+    struct file *file = fget(fd);\
+    if (file) {\
+        if (is_init_rc(file)) {\
+            pr_info("stat init.rc\\n");\
+            is_rc = true;\
+        }\
+        fput(file);\
+    }\
+\
+    ret = orig_sys_fstat(regs);\
+\
+    if (is_rc) {\
+        void __user *st_size_ptr = statbuf + offsetof(struct stat, st_size);\
+        long size, new_size;\
+        if (!copy_from_user_nofault(&size, st_size_ptr, sizeof(long))) {\
+            new_size = size + ksu_rc_len;\
+            pr_info("adding ksu_rc_len: %ld -> %ld", size, new_size);\
+            if (!copy_to_user_nofault(st_size_ptr, &new_size, sizeof(long))) {\
+                pr_info("added ksu_rc_len");\
+            } else {\
+                pr_err("add ksu_rc_len failed: statbuf 0x%lx", (unsigned long)st_size_ptr);\
+            }\
+        } else {\
+            pr_err("read statbuf 0x%lx failed", (unsigned long)st_size_ptr);\
+        }\
+    }\
+\
+    return ret;\
+}' "$KSUD_INT_C"
+        echo "[SUSFS-Fixup] ksud_integration.c: Restored ksu_sys_fstat"
+    fi
+
+    if ! grep -q "ksu_sys_read(const struct pt_regs" "$KSUD_INT_C" 2>/dev/null; then
+        sed -i '/^static unsigned int volumedown_pressed_count/i\
+static long (*orig_sys_read)(const struct pt_regs *regs);\
+static long ksu_sys_read(const struct pt_regs *regs)\
+{\
+    unsigned int fd = PT_REGS_PARM1(regs);\
+    char __user **buf_ptr = (char __user **)&PT_REGS_PARM2(regs);\
+    size_t *count_ptr = (size_t *)&PT_REGS_PARM3(regs);\
+\
+    ksu_handle_sys_read(fd, buf_ptr, count_ptr);\
+    return orig_sys_read(regs);\
+}\
+' "$KSUD_INT_C"
+        echo "[SUSFS-Fixup] ksud_integration.c: Restored ksu_sys_read"
+    fi
+
+    if ! grep -q "linux/kprobes.h" "$KSUD_INT_C" 2>/dev/null; then
+        sed -i '1s/^/#include <linux\/kprobes.h>\n/' "$KSUD_INT_C"
+        echo "[SUSFS-Fixup] ksud_integration.c: Restored linux/kprobes.h"
+    fi
+
     # ksu_execve_hook_ksud wrapper (needed by syscall_event_bridge.c)
     if grep -q "syscall_event_bridge.o" "$KBUILD" 2>/dev/null && \
        ! grep -q "ksu_execve_hook_ksud" "$KSUD_INT_C" 2>/dev/null; then
@@ -885,14 +949,6 @@ void ksu_execve_hook_ksud(const struct pt_regs *regs)
         (void)ksu_handle_execveat_init(&fname, &argv, NULL);
     }
 #endif
-}
-
-void ksu_stop_input_hook_runtime(void)
-{
-    extern struct static_key_true ksu_is_input_hook_enabled;
-    if (static_key_enabled(&ksu_is_input_hook_enabled))
-        static_branch_disable(&ksu_is_input_hook_enabled);
-    pr_info("ksu_is_input_hook_enabled disabled\n");
 }
 KSUD_COMPAT_EOF
         echo "[SUSFS-Fixup] ksud_integration.c: Added compat wrappers"
