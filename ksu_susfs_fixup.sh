@@ -100,6 +100,18 @@ if [ "$MANAGER" = "resukisu" ]; then
         }' "$SELINUX_HIDE_C"
         echo "[SUSFS-Fixup] selinux_hide.c: Removed undefined context_struct_compute_av_fn"
     fi
+    # [FIX] sucompat.c + kernel_umount.c — ksu_ vs susfs_ prefix mismatch
+    # ReSukiSU uses ksu_is_current_proc_umounted / ksu_set_current_proc_umounted
+    # but SUSFS v2.1 defines them as susfs_is_current_proc_umounted / susfs_set_current_proc_umounted
+    for _f in "$KSU_KERNEL/feature/sucompat.c" "$KSU_KERNEL/feature/kernel_umount.c"; do
+        if [ -f "$_f" ]; then
+            if grep -q 'ksu_is_current_proc_umounted\|ksu_set_current_proc_umounted' "$_f" 2>/dev/null; then
+                sed -i 's/ksu_is_current_proc_umounted/susfs_is_current_proc_umounted/g' "$_f"
+                sed -i 's/ksu_set_current_proc_umounted/susfs_set_current_proc_umounted/g' "$_f"
+                echo "[SUSFS-Fixup] $(basename "$_f"): Fixed ksu_ -> susfs_ proc umount prefix"
+            fi
+        fi
+    done
 fi
 
 # ==========================================================================
