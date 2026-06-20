@@ -221,7 +221,7 @@ jobs:
       - name: Build Kernel
         env:
           KPM_SUPERKEY_SECRET: ${{ secrets.KPM_SUPERKEY }}
-    CLANG_DIR: ${{ github.workspace }}/toolchains/clang
+          CLANG_DIR: ${{ github.workspace }}/toolchains/clang
           INPUT_VARIANT: ${{ inputs.variant }}
           INPUT_KPM: ${{ inputs.kpm }}
           INPUT_HARDENED: ${{ inputs.hardened }}
