@@ -211,7 +211,7 @@ jobs:
       - name: Download Clang Toolchain
         run: |
           mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b 14.0.6-20260619-release toolchains/clang
 
       - name: Setup AnyKernel3
         run: |
