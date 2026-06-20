@@ -90,8 +90,11 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          export TOOL_CLANG_DIR="$HOME/toolchains/greenforce-clang"
+          mkdir -p "$TOOL_CLANG_DIR"
+          wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
+          echo "TOOL_CLANG_DIR=$TOOL_CLANG_DIR" >> $GITHUB_ENV
+          echo "$TOOL_CLANG_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup AnyKernel3
         run: |
@@ -200,8 +203,11 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          export TOOL_CLANG_DIR="$HOME/toolchains/greenforce-clang"
+          mkdir -p "$TOOL_CLANG_DIR"
+          wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
+          echo "TOOL_CLANG_DIR=$TOOL_CLANG_DIR" >> $GITHUB_ENV
+          echo "$TOOL_CLANG_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup AnyKernel3
         run: |
@@ -310,8 +316,11 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          export TOOL_CLANG_DIR="$HOME/toolchains/greenforce-clang"
+          mkdir -p "$TOOL_CLANG_DIR"
+          wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
+          echo "TOOL_CLANG_DIR=$TOOL_CLANG_DIR" >> $GITHUB_ENV
+          echo "$TOOL_CLANG_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup AnyKernel3
         run: |
@@ -420,8 +429,11 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          export TOOL_CLANG_DIR="$HOME/toolchains/greenforce-clang"
+          mkdir -p "$TOOL_CLANG_DIR"
+          wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
+          echo "TOOL_CLANG_DIR=$TOOL_CLANG_DIR" >> $GITHUB_ENV
+          echo "$TOOL_CLANG_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup AnyKernel3
         run: |
@@ -493,8 +505,11 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          export TOOL_CLANG_DIR="$HOME/toolchains/greenforce-clang"
+          mkdir -p "$TOOL_CLANG_DIR"
+          wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
+          echo "TOOL_CLANG_DIR=$TOOL_CLANG_DIR" >> $GITHUB_ENV
+          echo "$TOOL_CLANG_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup AnyKernel3
         run: |
