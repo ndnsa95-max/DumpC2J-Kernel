@@ -235,6 +235,41 @@ if [ -f "$KBUILD" ] && [ -f "$APP_PROFILE_C" ]; then
 fi
 
 # ==========================================================================
+# [SHARED] dispatch.c — ensure SUSFS includes are present
+# ==========================================================================
+# The SUSFS patch adds SUSFS_MAGIC/CMD_SUSFS_* usage to dispatch.c but may fail
+# to add the #include <linux/susfs.h> (which transitively includes susfs_def.h)
+# if the file's include block doesn't match the patch context (e.g., YukiSU).
+if [ -f "$DISPATCH_C" ] && grep -q "SUSFS_MAGIC" "$DISPATCH_C" 2>/dev/null; then
+    if ! grep -q "linux/susfs.h" "$DISPATCH_C" 2>/dev/null; then
+        sed -i '/#include <linux\/version.h>/a #include <linux/susfs.h>' "$DISPATCH_C" 2>/dev/null || \
+        sed -i '1,/#include/{/#include/a #include <linux/susfs.h>
+        }' "$DISPATCH_C" 2>/dev/null || true
+        echo "[SUSFS-Fixup] dispatch.c: Added missing #include <linux/susfs.h>"
+    fi
+fi
+
+# ==========================================================================
+# [SHARED] Kconfig — ensure CONFIG_KSU defaults to built-in (y), not module (m)
+# ==========================================================================
+# The SUSFS patch expects to modify Kconfig but may fail on some forks (e.g.,
+# YukiSU has 'depends on m' + 'default m' instead of 'depends on KPROBES').
+# This causes KernelSU to build as a module, leading to 47+ unresolved symbols.
+KCONFIG="$KSU_KERNEL/Kconfig"
+if [ -f "$KCONFIG" ]; then
+    # Remove 'depends on m' which forces module-only build
+    if grep -q "depends on m$" "$KCONFIG" 2>/dev/null; then
+        sed -i '/^\s*depends on m$/d' "$KCONFIG"
+        echo "[SUSFS-Fixup] Kconfig: Removed 'depends on m' (was forcing module build)"
+    fi
+    # Change 'default m' to 'default y' for built-in
+    if grep -q "default m$" "$KCONFIG" 2>/dev/null; then
+        sed -i 's/^\(\s*\)default m$/\1default y/' "$KCONFIG"
+        echo "[SUSFS-Fixup] Kconfig: Changed 'default m' to 'default y' (built-in)"
+    fi
+fi
+
+# ==========================================================================
 # [SHARED] sucompat.h — Complete rebuild to clean state
 # ==========================================================================
 rebuild_sucompat_h() {
@@ -452,15 +487,109 @@ static long is_exec_adbd(const char *filename)\
     fi
 
     # Inject missing static keys required by susfs patches if not present
-    local ksu_c="$KSU_KERNEL/ksu.c"
-    if [ -f "$ksu_c" ]; then
-        if ! grep -q "ksu_is_init_rc_hook_enabled" "$ksu_c" 2>/dev/null; then
-            sed -i '/#include <linux\/module.h>/a \
+    # YukiSU doesn't have ksu.c — use init.c or ksud_integration.c instead
+    local target_c=""
+    for candidate in "$KSU_KERNEL/ksu.c" "$KSU_KERNEL/core/init.c" "$KSU_KERNEL/runtime/ksud_integration.c"; do
+        if [ -f "$candidate" ]; then
+            target_c="$candidate"
+            break
+        fi
+    done
+    if [ -n "$target_c" ]; then
+        if ! grep -q "ksu_is_init_rc_hook_enabled" "$target_c" 2>/dev/null; then
+            # Find an anchor: #include <linux/module.h> or first #include <linux/
+            if grep -q '#include <linux/module.h>' "$target_c" 2>/dev/null; then
+                sed -i '/#include <linux\/module.h>/a \
+#include <linux/jump_label.h>\
 DEFINE_STATIC_KEY_TRUE(ksu_is_init_rc_hook_enabled);\
 EXPORT_SYMBOL_GPL(ksu_is_init_rc_hook_enabled);\
 DEFINE_STATIC_KEY_TRUE(ksu_is_input_hook_enabled);\
-EXPORT_SYMBOL_GPL(ksu_is_input_hook_enabled);' "$ksu_c"
-            echo "[SUSFS-Fixup] ksu.c: Injected missing static keys for YukiSU"
+EXPORT_SYMBOL_GPL(ksu_is_input_hook_enabled);' "$target_c"
+            else
+                # Insert after last #include block
+                sed -i '0,/^#include.*$/{/^$/i \
+#include <linux/jump_label.h>\
+DEFINE_STATIC_KEY_TRUE(ksu_is_init_rc_hook_enabled);\
+EXPORT_SYMBOL_GPL(ksu_is_init_rc_hook_enabled);\
+DEFINE_STATIC_KEY_TRUE(ksu_is_input_hook_enabled);\
+EXPORT_SYMBOL_GPL(ksu_is_input_hook_enabled);
+            }' "$target_c"
+            fi
+            echo "[SUSFS-Fixup] $(basename "$target_c"): Injected missing static keys"
+        fi
+    fi
+}
+
+# --------------------------------------------------------------------------
+# YukiSU-specific: Fix SUSFS compatibility issues unique to YukiSU
+# --------------------------------------------------------------------------
+fix_yukisu_susfs_compat() {
+    # Fix 1: sh_user_path duplication — the fixup's sucompat.c rebuild
+    # may add sh_user_path but YukiSU already has it
+    if [ -f "$SUCOMPAT_C" ]; then
+        local count
+        count=$(grep -c "^static char __user \*sh_user_path(void)" "$SUCOMPAT_C" 2>/dev/null || echo 0)
+        if [ "$count" -gt 1 ]; then
+            # Remove duplicate — keep only the first occurrence
+            awk '/^static char __user \*sh_user_path\(void\)/{c++; if(c>1){skip=1}} skip && /^}/{skip=0; next} !skip' "$SUCOMPAT_C" > "${SUCOMPAT_C}.tmp" && mv "${SUCOMPAT_C}.tmp" "$SUCOMPAT_C"
+            echo "[SUSFS-Fixup] sucompat.c: Removed duplicate sh_user_path"
+        fi
+    fi
+
+    # Fix 2: ksu_handle_execveat_ksud — YukiSU uses 4 args (no fd), not 5
+    # YukiSU signature: void ksu_handle_execveat_ksud(const char *filename, struct user_arg_ptr *argv,
+    #                                                 struct user_arg_ptr *envp, int *flags);
+    # Our injected ksu_handle_execveat calls it with 5 args (fd, filename_ptr, argv, envp, flags)
+    if [ -f "$SUCOMPAT_C" ] && [ -f "$KSU_KERNEL/runtime/ksud.h" ]; then
+        local ksud_sig
+        ksud_sig=$(grep "ksu_handle_execveat_ksud" "$KSU_KERNEL/runtime/ksud.h" 2>/dev/null | head -1)
+        if echo "$ksud_sig" | grep -q "const char \*filename," 2>/dev/null; then
+            # YukiSU 4-arg form: void ksu_handle_execveat_ksud(filename, argv, envp, flags)
+            # Replace 5-arg call. Since return is void, can't use in if(!...)
+            sed -i 's|if (ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags))|ksu_handle_execveat_ksud((*filename_ptr)->name, (struct user_arg_ptr *)argv, (struct user_arg_ptr *)envp, flags); if (0)|' "$SUCOMPAT_C"
+            echo "[SUSFS-Fixup] sucompat.c: Fixed ksu_handle_execveat_ksud to YukiSU 4-arg signature"
+        fi
+    fi
+
+    # Fix 3: escape_to_root_for_init return type mismatch
+    # YukiSU's app_profile.h declares: int escape_to_root_for_init(void);
+    # YukiSU's app_profile.c defines:  void escape_to_root_for_init(void)
+    # Fix: change .c definition to match .h declaration
+    local APP_PROFILE_C_Y="$KSU_KERNEL/policy/app_profile.c"
+    local APP_PROFILE_H_Y="$KSU_KERNEL/policy/app_profile.h"
+    if [ -f "$APP_PROFILE_C_Y" ] && [ -f "$APP_PROFILE_H_Y" ]; then
+        if grep -q "^int escape_to_root_for_init(void);" "$APP_PROFILE_H_Y" 2>/dev/null && \
+           grep -q "^void escape_to_root_for_init(void)" "$APP_PROFILE_C_Y" 2>/dev/null; then
+            sed -i 's/^void escape_to_root_for_init(void)/int escape_to_root_for_init(void)/' "$APP_PROFILE_C_Y"
+            # Add return 0 before the closing brace of the function
+            local funcstart
+            funcstart=$(grep -n "^int escape_to_root_for_init(void)" "$APP_PROFILE_C_Y" | head -1 | cut -d: -f1)
+            if [ -n "$funcstart" ]; then
+                local funcend
+                funcend=$(awk -v s="$funcstart" 'NR>s && /^}/{print NR; exit}' "$APP_PROFILE_C_Y")
+                if [ -n "$funcend" ]; then
+                    sed -i "${funcend}i\\\treturn 0;" "$APP_PROFILE_C_Y"
+                fi
+            fi
+            echo "[SUSFS-Fixup] app_profile.c: Fixed escape_to_root_for_init return type (void -> int)"
+        fi
+    fi
+
+    # Fix 4: ksu_handle_execve_sucompat — behind #ifndef CONFIG_KSU_SUSFS
+    # bridge.c calls it unconditionally, so we need a stub outside the guard
+    if [ -f "$SUCOMPAT_C" ]; then
+        if grep -B2 "long ksu_handle_execve_sucompat" "$SUCOMPAT_C" 2>/dev/null | grep -q "#ifndef CONFIG_KSU_SUSFS"; then
+            cat >> "$SUCOMPAT_C" << 'EXECVE_STUB_EOF'
+
+/* SUSFS stub: bridge.c calls this unconditionally but upstream hides it behind #ifndef */
+#ifdef CONFIG_KSU_SUSFS
+long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr, const struct pt_regs *regs)
+{
+    return 0;
+}
+#endif
+EXECVE_STUB_EOF
+            echo "[SUSFS-Fixup] sucompat.c: Added ksu_handle_execve_sucompat stub for SUSFS"
         fi
     fi
 }
@@ -526,6 +655,24 @@ REBOOT_HANDLER_EOF
     if [ -f "$SUPERCALL_H" ] && ! grep -q "ksu_supercall_reboot_handler" "$SUPERCALL_H" 2>/dev/null; then
         sed -i '/ksu_install_fd/a int ksu_supercall_reboot_handler(void __user **arg);' "$SUPERCALL_H" 2>/dev/null || \
         sed -i '/ksu_supercalls_init/i int ksu_supercall_reboot_handler(void __user **arg);' "$SUPERCALL_H" 2>/dev/null || true
+    fi
+
+    # Remove duplicate ksu_handle_sys_reboot from dispatch.c
+    # The SUSFS patch adds it for non-kprobe architecture (KSU-Next style),
+    # but kprobe-based managers already have it in supercall.c.
+    if [ -f "$DISPATCH_C" ] && grep -q "^int ksu_handle_sys_reboot" "$DISPATCH_C" 2>/dev/null && \
+       grep -q "^int ksu_handle_sys_reboot" "$SUPERCALL_C" 2>/dev/null; then
+        # Remove the entire function from dispatch.c (from signature to closing brace)
+        local start_line end_line
+        start_line=$(grep -n "^int ksu_handle_sys_reboot" "$DISPATCH_C" | head -1 | cut -d: -f1)
+        if [ -n "$start_line" ]; then
+            # Find the matching closing brace at column 0
+            end_line=$(awk -v s="$start_line" 'NR>s && /^}/{print NR; exit}' "$DISPATCH_C")
+            if [ -n "$end_line" ]; then
+                sed -i "${start_line},${end_line}d" "$DISPATCH_C"
+                echo "[SUSFS-Fixup] dispatch.c: Removed duplicate ksu_handle_sys_reboot (already in supercall.c)"
+            fi
+        fi
     fi
 }
 
@@ -725,13 +872,29 @@ fix_ksu_next_bridge() {
     if [ ! -f "$BRIDGE_C" ]; then return; fi
 
     if grep -q "ksu_handle_setresuid(old_uid, current_uid().val)" "$BRIDGE_C" 2>/dev/null; then
-        sed -i 's/ksu_handle_setresuid(old_uid, current_uid()\.val);/{\
+        # Check the ACTUAL definition in setuid_hook.c (not .h, which SUSFS strips)
+        local SETUID_HOOK_C_LOCAL="$KSU_KERNEL/hook/setuid_hook.c"
+        local has_3arg=0
+        if [ -f "$SETUID_HOOK_C_LOCAL" ] && grep -q "ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)" "$SETUID_HOOK_C_LOCAL" 2>/dev/null; then
+            has_3arg=1
+        elif [ -f "$SETUID_HOOK_C_LOCAL" ] && grep -q "ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)" "$SETUID_HOOK_C_LOCAL" 2>/dev/null; then
+            has_3arg=0
+        else
+            # Default: assume 3-arg (SUSFS standard transforms to 3-arg)
+            has_3arg=1
+        fi
+
+        if [ "$has_3arg" -eq 1 ]; then
+            sed -i 's/ksu_handle_setresuid(old_uid, current_uid()\.val);/{\
         uid_t ruid = PT_REGS_PARM1(regs);\
         uid_t euid = PT_REGS_PARM2(regs);\
         uid_t suid = PT_REGS_PARM3(regs);\
         ksu_handle_setresuid(ruid, euid, suid);\
     }/' "$BRIDGE_C"
-        echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed setresuid 3-arg"
+            echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed setresuid 3-arg"
+        else
+            echo "[SUSFS-Fixup] syscall_event_bridge.c: Keeping setresuid 2-arg (manager definition uses 2-arg)"
+        fi
     fi
 
     # Fix ksu_handle_stat call signature for KernelSU-Next tracepoints
@@ -1041,20 +1204,38 @@ fix_ksu_next_susfs_umount() {
 }
 
 fix_ksu_late_loaded() {
-    # Restore ksu_late_loaded removed by SUSFS patch if still referenced
-    if [ -f "$INIT_C" ] && grep -q "ksu_late_loaded" "$INIT_C" 2>/dev/null && \
-       ! grep -q "bool ksu_late_loaded" "$INIT_C" 2>/dev/null; then
-        # Restore variable definition after ksu_cred
-        sed -i '/^struct cred \*ksu_cred;/a bool ksu_late_loaded;' "$INIT_C"
-        # Restore #ifdef MODULE initialization block before the debug block
-        sed -i '/^int __init kernelsu_init(void)/,/^{/{/^{/a\
+    local SELINUX_HIDE_C="$KSU_KERNEL/feature/selinux_hide.c"
+
+    # Restore ksu_late_loaded removed by SUSFS patch.
+    # The SUSFS patch completely strips ksu_late_loaded from init.c,
+    # but fix_dirty_sepolicy restores upstream selinux_hide.c which uses it.
+    # So we check selinux_hide.c (not init.c) for the reference.
+    if [ -f "$SELINUX_HIDE_C" ] && grep -q "ksu_late_loaded" "$SELINUX_HIDE_C" 2>/dev/null && \
+       [ -f "$INIT_C" ] && ! grep -q "bool ksu_late_loaded" "$INIT_C" 2>/dev/null; then
+        # Find the right anchor — prefer ksu_cred, fallback to first struct/bool
+        if grep -q "^struct cred \*ksu_cred;" "$INIT_C" 2>/dev/null; then
+            sed -i '/^struct cred \*ksu_cred;/a bool ksu_late_loaded;' "$INIT_C"
+        else
+            # Insert after the last #include block
+            sed -i '0,/^#include/{/^$/i bool ksu_late_loaded;
+            }' "$INIT_C"
+        fi
+        # Restore #ifdef MODULE initialization block
+        if grep -q "^int __init kernelsu_init(void)" "$INIT_C" 2>/dev/null; then
+            sed -i '/^int __init kernelsu_init(void)/,/^{/{/^{/a\
 #ifdef MODULE\n\tksu_late_loaded = (current->pid != 1);\n#else\n\tksu_late_loaded = false;\n#endif
 }' "$INIT_C"
+        fi
         echo "[SUSFS-Fixup] init.c: Restored ksu_late_loaded definition and init"
     fi
-    if [ -f "$KSU_H" ] && grep -q "ksu_late_loaded" "$INIT_C" 2>/dev/null && \
+    if [ -f "$KSU_H" ] && [ -f "$SELINUX_HIDE_C" ] && \
+       grep -q "ksu_late_loaded" "$SELINUX_HIDE_C" 2>/dev/null && \
        ! grep -q "ksu_late_loaded" "$KSU_H" 2>/dev/null; then
-        sed -i '/^extern struct cred \*ksu_cred;/a extern bool ksu_late_loaded;' "$KSU_H"
+        if grep -q "^extern struct cred \*ksu_cred;" "$KSU_H" 2>/dev/null; then
+            sed -i '/^extern struct cred \*ksu_cred;/a extern bool ksu_late_loaded;' "$KSU_H"
+        else
+            sed -i '/^#endif/i extern bool ksu_late_loaded;' "$KSU_H"
+        fi
         echo "[SUSFS-Fixup] ksu.h: Restored extern ksu_late_loaded"
     fi
 }
@@ -1311,14 +1492,10 @@ case "$MANAGER" in
         if [ "$MANAGER" = "yukisu" ]; then
             fix_yukisu_adb_root
         fi
-        # Both use KernelSU-Next hooking architecture
+        # All use KernelSU-Next hooking architecture
         fix_ksu_next_kbuild
         fix_ksu_next_bridge
         fix_ksu_next_ksud
-        fix_dirty_sepolicy
-        fix_dirty_sepolicy_seqno
-        fix_backup_sepolicy_leak
-        fix_app_zygote_bypass
         # If it still has kprobe supercall, fix it, otherwise use next's
         if [ -f "$SUPERCALL_C" ] && grep -q "reboot_handler_pre" "$SUPERCALL_C" 2>/dev/null; then
             fix_kprobe_supercall
@@ -1346,41 +1523,80 @@ SULOG_EXECVE_EOF
         if [ -f "$SULOG_EVENT_H" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_H" 2>/dev/null; then
             sed -i '/ksu_sulog_capture_sucompat/i struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve(const char __user *filename_user, const char __user *const __user *argv_user, gfp_t gfp);' "$SULOG_EVENT_H"
         fi
-        
-        fix_ksu_late_loaded
         fix_dirty_sepolicy
+        fix_ksu_late_loaded
         fix_dirty_sepolicy_seqno
         fix_backup_sepolicy_leak
         fix_app_zygote_bypass
+        # YukiSU-specific compat fixes (sh_user_path dup, execveat_ksud 4-arg, escape_to_root type)
+        if [ "$MANAGER" = "yukisu" ]; then
+            fix_yukisu_susfs_compat
+        fi
         ;;
     ksu-next)
+        fix_sulog_type_mismatch
         fix_ksu_next_kbuild
         fix_ksu_next_bridge
         fix_ksu_next_supercall
         fix_ksu_next_ksud
         fix_execveat_handlers
         fix_ksu_next_susfs_umount
-        fix_dirty_sepolicy
-        fix_dirty_sepolicy_seqno
-        fix_backup_sepolicy_leak
-        fix_app_zygote_bypass
+        # KSU-Next's sucompat.c uses _sucompat suffix for VFS hooks.
+        # The SUSFS patch + kernel hooks in fs/open.c, fs/stat.c call
+        # ksu_handle_faccessat / ksu_handle_stat (without _sucompat).
+        # sucompat.h declares them but sucompat.c doesn't define them.
+        # Add stubs that delegate to the version-gated implementations.
+        if [ -f "$SUCOMPAT_C" ] && ! grep -q "^int ksu_handle_faccessat" "$SUCOMPAT_C" 2>/dev/null; then
+            cat >> "$SUCOMPAT_C" << 'VFS_STUBS_EOF'
+
+/* VFS hook stubs — fs/open.c and fs/stat.c call these names */
+int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+    int *__unused_flags)
+{
+    if (unlikely(!filename_user))
+        return 0;
+    char path[sizeof(su_path) + 1] = {0};
+    strncpy_from_user(path, *filename_user, sizeof(path));
+    if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
+        *filename_user = sh_user_path();
+    }
+    return 0;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+int ksu_handle_stat(int *dfd, struct filename **filename, int *flags)
+{
+    static const char su[] = SU_PATH;
+    static const char sh[] = "/system/bin/sh";
+    if (unlikely(IS_ERR(*filename) || (*filename)->name == NULL))
+        return 0;
+    if (likely(memcmp((*filename)->name, su, sizeof(su))))
+        return 0;
+    memcpy((void *)((*filename)->name), sh, sizeof(sh));
+    return 0;
+}
+#else
+int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+{
+    if (unlikely(!filename_user))
+        return 0;
+    char path[sizeof(su_path) + 1] = {0};
+    strncpy_from_user(path, *filename_user, sizeof(path));
+    if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
+        *filename_user = sh_user_path();
+    }
+    return 0;
+}
+#endif
+VFS_STUBS_EOF
+            echo "[SUSFS-Fixup] sucompat.c: Added ksu_handle_faccessat + ksu_handle_stat VFS stubs"
+        fi
         # Fix adb_root call signature mismatch in syscall_event_bridge.c
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
             sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
             echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
         fi
-        ;;
-    ksu)
-        echo "[SUSFS-Fixup] Applying fixes for standard KernelSU ($MANAGER)..."
-        fix_sulog_type_mismatch
-        
-        # Standard KSU doesn't use Next's bridge renames, but we still need adb_root fix
-        if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
-            sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
-            echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
-        fi
-        
-        # Standard KSU removed ksu_sulog_capture_root_execve, we need to restore it
+        # Restore ksu_sulog_capture_root_execve in event.c if missing
         if [ -f "$SULOG_EVENT_C" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_C" 2>/dev/null; then
             cat >> "$SULOG_EVENT_C" << 'SULOG_EXECVE_EOF'
 
@@ -1396,18 +1612,57 @@ SULOG_EXECVE_EOF
         if [ -f "$SULOG_EVENT_H" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_H" 2>/dev/null; then
             sed -i '/ksu_sulog_capture_sucompat/i struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve(const char __user *filename_user, const char __user *const __user *argv_user, gfp_t gfp);' "$SULOG_EVENT_H"
         fi
-        
-        # Standard KSU handles sucompat in execveat now, so we bypass the old hook
-        if [ -f "$BRIDGE_C" ]; then
-            sed -i 's|ret = ksu_handle_execve_sucompat(filename_user, orig_nr, regs);|ret = 0; // bypassed|g' "$BRIDGE_C"
-            echo "[SUSFS-Fixup] syscall_event_bridge.c: Bypassed deprecated ksu_handle_execve_sucompat"
+        fix_dirty_sepolicy
+        fix_ksu_late_loaded
+        fix_dirty_sepolicy_seqno
+        fix_backup_sepolicy_leak
+        fix_app_zygote_bypass
+        ;;
+    ksu)
+        echo "[SUSFS-Fixup] Applying fixes for standard KernelSU ($MANAGER)..."
+        fix_sulog_type_mismatch
+        fix_execveat_handlers
+        # Standard KSU uses the same Next-style hooking now
+        fix_ksu_next_kbuild
+        fix_ksu_next_bridge
+        fix_ksu_next_ksud
+        # Supercall fix
+        if [ -f "$SUPERCALL_C" ] && grep -q "reboot_handler_pre" "$SUPERCALL_C" 2>/dev/null; then
+            fix_kprobe_supercall
+        else
+            fix_ksu_next_supercall
         fi
-        
+        # Fix adb_root call signature mismatch
+        if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
+            sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
+            echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+        fi
+        # Restore ksu_sulog_capture_root_execve if missing
+        if [ -f "$SULOG_EVENT_C" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_C" 2>/dev/null; then
+            cat >> "$SULOG_EVENT_C" << 'SULOG_EXECVE_EOF'
+
+struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve(const char __user *filename_user,
+                                                              const char __user *const __user *argv_user, gfp_t gfp)
+{
+    struct user_arg_ptr _argv_wrap = { .ptr.native = argv_user };
+    return ksu_sulog_capture(KSU_SULOG_EVENT_ROOT_EXECVE, filename_user, &_argv_wrap, gfp);
+}
+SULOG_EXECVE_EOF
+            echo "[SUSFS-Fixup] sulog/event.c: Restored ksu_sulog_capture_root_execve"
+        fi
+        if [ -f "$SULOG_EVENT_H" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_H" 2>/dev/null; then
+            sed -i '/ksu_sulog_capture_sucompat/i struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve(const char __user *filename_user, const char __user *const __user *argv_user, gfp_t gfp);' "$SULOG_EVENT_H"
+        fi
+        fix_dirty_sepolicy
+        fix_ksu_late_loaded
+        fix_dirty_sepolicy_seqno
+        fix_backup_sepolicy_leak
         fix_app_zygote_bypass
         ;;
     *)
         echo "[SUSFS-Fixup] Unknown manager '$MANAGER' — applying best-effort fixes"
         fix_sulog_type_mismatch
+        fix_execveat_handlers
         # If kprobe-based, fix it; if not, try ksu-next fixes
         if [ -f "$SUPERCALL_C" ] && grep -q "reboot_handler_pre" "$SUPERCALL_C" 2>/dev/null; then
             fix_kprobe_supercall
@@ -1417,12 +1672,32 @@ SULOG_EXECVE_EOF
             fix_ksu_next_supercall
             fix_ksu_next_ksud
         fi
-        fix_app_zygote_bypass
-        # Fix adb_root call signature mismatch in syscall_event_bridge.c (for latest official ksu)
+        # Fix adb_root call signature mismatch
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
             sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
             echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
         fi
+        # Restore ksu_sulog_capture_root_execve if missing
+        if [ -f "$SULOG_EVENT_C" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_C" 2>/dev/null; then
+            cat >> "$SULOG_EVENT_C" << 'SULOG_EXECVE_EOF'
+
+struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve(const char __user *filename_user,
+                                                              const char __user *const __user *argv_user, gfp_t gfp)
+{
+    struct user_arg_ptr _argv_wrap = { .ptr.native = argv_user };
+    return ksu_sulog_capture(KSU_SULOG_EVENT_ROOT_EXECVE, filename_user, &_argv_wrap, gfp);
+}
+SULOG_EXECVE_EOF
+            echo "[SUSFS-Fixup] sulog/event.c: Restored ksu_sulog_capture_root_execve"
+        fi
+        if [ -f "$SULOG_EVENT_H" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_H" 2>/dev/null; then
+            sed -i '/ksu_sulog_capture_sucompat/i struct ksu_sulog_pending_event *ksu_sulog_capture_root_execve(const char __user *filename_user, const char __user *const __user *argv_user, gfp_t gfp);' "$SULOG_EVENT_H"
+        fi
+        fix_dirty_sepolicy
+        fix_ksu_late_loaded
+        fix_dirty_sepolicy_seqno
+        fix_backup_sepolicy_leak
+        fix_app_zygote_bypass
         ;;
 esac
 
