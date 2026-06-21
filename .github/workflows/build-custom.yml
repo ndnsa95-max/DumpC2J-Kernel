@@ -210,8 +210,13 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+          echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
+          echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
 
       - name: Setup AnyKernel3
         run: |
