@@ -1443,14 +1443,14 @@ static int ncm_bind(struct usb_configuration *c, struct usb_function *f)
 	 * with list_for_each_entry, so we assume no race condition
 	 * with regard to ncm_opts->bound access
 	 */
-	if (!ncm_opts->bound) {
+	if (!ncm_opts->bind_count) {
 		mutex_lock(&ncm_opts->lock);
 		gether_set_gadget(ncm_opts->net, cdev->gadget);
 		status = gether_register_netdev(ncm_opts->net);
 		mutex_unlock(&ncm_opts->lock);
 		if (status)
 			goto fail;
-		ncm_opts->bound = true;
+		ncm_opts->bind_count++;
 	}
 
 	ncm_string_defs[1].s = ncm->ethaddr;
@@ -1611,7 +1611,7 @@ static void ncm_free_inst(struct usb_function_instance *f)
 	struct f_ncm_opts *opts;
 
 	opts = container_of(f, struct f_ncm_opts, func_inst);
-	if (opts->bound)
+	if (opts->bind_count)
 		gether_cleanup(netdev_priv(opts->net));
 	else
 		free_netdev(opts->net);

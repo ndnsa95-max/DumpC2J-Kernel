@@ -56,6 +56,7 @@ virtio_transport_alloc_skb(struct virtio_vsock_pkt_info *info,
 	const size_t skb_len = VIRTIO_VSOCK_SKB_HEADROOM + len;
 	struct virtio_vsock_hdr *hdr;
 	struct sk_buff *skb;
+	void *payload;
 	int err;
 
 	skb = virtio_vsock_alloc_skb(skb_len, GFP_KERNEL);
@@ -75,8 +76,8 @@ virtio_transport_alloc_skb(struct virtio_vsock_pkt_info *info,
 	hdr->fwd_cnt	= cpu_to_le32(0);
 
 	if (info->msg && len > 0) {
-		virtio_vsock_skb_put(skb, len);
-		err = skb_copy_datagram_from_iter_full(skb, 0, &info->msg->msg_iter, len);
+		payload = skb_put(skb, len);
+		err = memcpy_from_msg(payload, info->msg, len);
 		if (err)
 			goto out;
 
@@ -111,27 +112,6 @@ out:
 	return NULL;
 }
 
-static void virtio_transport_copy_nonlinear_skb(const struct sk_buff *skb,
-						void *dst,
-						size_t len)
-{
-	struct iov_iter iov_iter = { 0 };
-	struct kvec kvec;
-	size_t to_copy;
-
-	kvec.iov_base = dst;
-	kvec.iov_len = len;
-
-	iov_iter.iter_type = ITER_KVEC;
-	iov_iter.kvec = &kvec;
-	iov_iter.nr_segs = 1;
-
-	to_copy = min_t(size_t, len, skb->len);
-
-	skb_copy_datagram_iter(skb, VIRTIO_VSOCK_SKB_CB(skb)->offset,
-			       &iov_iter, to_copy);
-}
-
 /* Packet capture */
 static struct sk_buff *virtio_transport_build_skb(void *opaque)
 {
@@ -140,6 +120,7 @@ static struct sk_buff *virtio_transport_build_skb(void *opaque)
 	struct af_vsockmon_hdr *hdr;
 	struct sk_buff *skb;
 	size_t payload_len;
+	void *payload_buf;
 
 	/* A packet could be split to fit the RX buffer, so we use
 	 * the payload length from the header, which has been updated
@@ -147,6 +128,7 @@ static struct sk_buff *virtio_transport_build_skb(void *opaque)
 	 */
 	pkt_hdr = virtio_vsock_hdr(pkt);
 	payload_len = le32_to_cpu(pkt_hdr->len);
+	payload_buf = pkt->data;
 
 	skb = alloc_skb(sizeof(*hdr) + sizeof(*pkt_hdr) + payload_len,
 			GFP_ATOMIC);
@@ -189,13 +171,7 @@ static struct sk_buff *virtio_transport_build_skb(void *opaque)
 	skb_put_data(skb, pkt_hdr, sizeof(*pkt_hdr));
 
 	if (payload_len) {
-		if (skb_is_nonlinear(pkt)) {
-			void *data = skb_put(skb, payload_len);
-
-			virtio_transport_copy_nonlinear_skb(pkt, data, payload_len);
-		} else {
-			skb_put_data(skb, pkt->data, payload_len);
-		}
+		skb_put_data(skb, payload_buf, payload_len);
 	}
 
 	return skb;
@@ -227,24 +203,6 @@ static u16 virtio_transport_get_type(struct sock *sk)
 static int virtio_transport_send_pkt_info(struct vsock_sock *vsk,
 					  struct virtio_vsock_pkt_info *info)
 {
-	/* ANDROID:
-	 *
-	 * Older host kernels (including the 5.10-based images used by
-	 * Cuttlefish) only support linear SKBs on the RX path.
-	 * Consequently, if we transmit a VIRTIO_VSOCK_MAX_PKT_BUF_SIZE
-	 * packet, the host allocation can fail and the packet will be
-	 * silently dropped.
-	 *
-	 * As a nasty workaround, limit the entire SKB to ~28KiB, which
-	 * allows for 4KiB of SKB wiggle room whilst keeping the
-	 * allocation below PAGE_ALLOC_COSTLY_ORDER.
-	 *
-	 * This can be removed when all supported host kernels have
-	 * support for non-linear RX buffers introduced by Change-Id
-	 * I4212a8daf9f19b5bbffc06ce93338c823de7bb19.
-	 */
-	u32 max_skb_len = min_t(u32, VIRTIO_VSOCK_MAX_PKT_BUF_SIZE,
-				SKB_WITH_OVERHEAD(SZ_32K - VIRTIO_VSOCK_SKB_HEADROOM) - SZ_4K);
 	u32 src_cid, src_port, dst_cid, dst_port;
 	const struct virtio_transport *t_ops;
 	struct virtio_vsock_sock *vvs;
@@ -283,7 +241,7 @@ static int virtio_transport_send_pkt_info(struct vsock_sock *vsk,
 		struct sk_buff *skb;
 		size_t skb_len;
 
-		skb_len = min_t(u32, max_skb_len, rest_len);
+		skb_len = min_t(u32, VIRTIO_VSOCK_MAX_PKT_BUF_SIZE, rest_len);
 
 		skb = virtio_transport_alloc_skb(info, skb_len,
 						 src_cid, src_port,
@@ -410,10 +368,9 @@ virtio_transport_stream_do_peek(struct vsock_sock *vsk,
 		spin_unlock_bh(&vvs->rx_lock);
 
 		/* sk_lock is held by caller so no one else can dequeue.
-		 * Unlock rx_lock since skb_copy_datagram_iter() may sleep.
+		 * Unlock rx_lock since memcpy_to_msg() may sleep.
 		 */
-		err = skb_copy_datagram_iter(skb, VIRTIO_VSOCK_SKB_CB(skb)->offset,
-					     &msg->msg_iter, bytes);
+		err = memcpy_to_msg(msg, skb->data, bytes);
 		if (err)
 			goto out;
 
@@ -459,27 +416,25 @@ virtio_transport_stream_do_dequeue(struct vsock_sock *vsk,
 	while (total < len && !skb_queue_empty(&vvs->rx_queue)) {
 		skb = skb_peek(&vvs->rx_queue);
 
-		bytes = min_t(size_t, len - total,
-			      skb->len - VIRTIO_VSOCK_SKB_CB(skb)->offset);
+		bytes = len - total;
+		if (bytes > skb->len)
+			bytes = skb->len;
 
 		/* sk_lock is held by caller so no one else can dequeue.
-		 * Unlock rx_lock since skb_copy_datagram_iter() may sleep.
+		 * Unlock rx_lock since memcpy_to_msg() may sleep.
 		 */
 		spin_unlock_bh(&vvs->rx_lock);
 
-		err = skb_copy_datagram_iter(skb,
-					     VIRTIO_VSOCK_SKB_CB(skb)->offset,
-					     &msg->msg_iter, bytes);
+		err = memcpy_to_msg(msg, skb->data, bytes);
 		if (err)
 			goto out;
 
 		spin_lock_bh(&vvs->rx_lock);
 
 		total += bytes;
+		skb_pull(skb, bytes);
 
-		VIRTIO_VSOCK_SKB_CB(skb)->offset += bytes;
-
-		if (skb->len == VIRTIO_VSOCK_SKB_CB(skb)->offset) {
+		if (skb->len == 0) {
 			u32 pkt_len = le32_to_cpu(virtio_vsock_hdr(skb)->len);
 
 			virtio_transport_dec_rx_pkt(vvs, pkt_len);
@@ -548,10 +503,9 @@ virtio_transport_seqpacket_do_peek(struct vsock_sock *vsk,
 			spin_unlock_bh(&vvs->rx_lock);
 
 			/* sk_lock is held by caller so no one else can dequeue.
-			 * Unlock rx_lock since skb_copy_datagram_iter() may sleep.
+			 * Unlock rx_lock since memcpy_to_msg() may sleep.
 			 */
-			err = skb_copy_datagram_iter(skb, VIRTIO_VSOCK_SKB_CB(skb)->offset,
-						     &msg->msg_iter, bytes);
+			err = memcpy_to_msg(msg, skb->data, bytes);
 			if (err)
 				return err;
 
@@ -610,13 +564,11 @@ static int virtio_transport_seqpacket_do_dequeue(struct vsock_sock *vsk,
 				int err;
 
 				/* sk_lock is held by caller so no one else can dequeue.
-				 * Unlock rx_lock since skb_copy_datagram_iter() may sleep.
+				 * Unlock rx_lock since memcpy_to_msg() may sleep.
 				 */
 				spin_unlock_bh(&vvs->rx_lock);
 
-				err = skb_copy_datagram_iter(skb, 0,
-							     &msg->msg_iter,
-							     bytes_to_copy);
+				err = memcpy_to_msg(msg, skb->data, bytes_to_copy);
 				if (err) {
 					/* Copy of message failed. Rest of
 					 * fragments will be freed without copy.
@@ -1091,7 +1043,7 @@ static void virtio_transport_do_close(struct vsock_sock *vsk,
 	struct sock *sk = sk_vsock(vsk);
 
 	sock_set_flag(sk, SOCK_DONE);
-	vsk->peer_shutdown = SHUTDOWN_MASK;
+	WRITE_ONCE(vsk->peer_shutdown, SHUTDOWN_MASK);
 	if (vsock_stream_has_data(vsk) <= 0)
 		sk->sk_state = TCP_CLOSING;
 	sk->sk_state_change(sk);
@@ -1292,12 +1244,15 @@ virtio_transport_recv_connected(struct sock *sk,
 	case VIRTIO_VSOCK_OP_CREDIT_UPDATE:
 		sk->sk_write_space(sk);
 		break;
-	case VIRTIO_VSOCK_OP_SHUTDOWN:
+	case VIRTIO_VSOCK_OP_SHUTDOWN: {
+		u32 peer_shutdown = READ_ONCE(vsk->peer_shutdown);
+
 		if (le32_to_cpu(hdr->flags) & VIRTIO_VSOCK_SHUTDOWN_RCV)
-			vsk->peer_shutdown |= RCV_SHUTDOWN;
+			peer_shutdown |= RCV_SHUTDOWN;
 		if (le32_to_cpu(hdr->flags) & VIRTIO_VSOCK_SHUTDOWN_SEND)
-			vsk->peer_shutdown |= SEND_SHUTDOWN;
-		if (vsk->peer_shutdown == SHUTDOWN_MASK) {
+			peer_shutdown |= SEND_SHUTDOWN;
+		WRITE_ONCE(vsk->peer_shutdown, peer_shutdown);
+		if (peer_shutdown == SHUTDOWN_MASK) {
 			if (vsock_stream_has_data(vsk) <= 0 && !sock_flag(sk, SOCK_DONE)) {
 				(void)virtio_transport_reset(vsk, NULL);
 				virtio_transport_do_close(vsk, true);
@@ -1312,6 +1267,7 @@ virtio_transport_recv_connected(struct sock *sk,
 		if (le32_to_cpu(virtio_vsock_hdr(skb)->flags))
 			sk->sk_state_change(sk);
 		break;
+	}
 	case VIRTIO_VSOCK_OP_RST:
 		virtio_transport_do_close(vsk, true);
 		break;
