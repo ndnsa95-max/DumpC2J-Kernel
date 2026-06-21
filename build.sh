@@ -616,6 +616,9 @@ esac
 # Hardened config
 if [ "$HARDENED" == "off" ]; then
     scripts/config --file "$OUT_DIR/.config" -d CONFIG_CPU_MITIGATIONS -d CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY
+
+# Greenforce Clang does not include ARM32 target
+scripts/config --file "$OUT_DIR/.config" -d CONFIG_VDSO32
 fi
 
 # LTO config
