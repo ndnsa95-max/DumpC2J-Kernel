@@ -210,14 +210,13 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p "$HOME/toolchains/neutron-clang"
-          cd "$HOME/toolchains/neutron-clang"
-          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          chmod +x antman
-          ./antman -S
-          echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
-          echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
-          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
+          cd $GITHUB_WORKSPACE
+          wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
+          GFORCE_DIR="$GITHUB_WORKSPACE/greenforce-clang"
+          echo "CLANG_PATH=$GFORCE_DIR" >> $GITHUB_ENV
+          echo "$GFORCE_DIR/bin" >> $GITHUB_PATH
+          GF_VERSION=$("$GFORCE_DIR/bin/clang" --version | head -n1 | grep -oP 'clang version \K[0-9.]+' || echo "23.0.0")
+          echo "KBUILD_COMPILER_STRING=Cirrus Clang $GF_VERSION" >> $GITHUB_ENV
           echo "KBUILD_BUILD_USER=adennnqt" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=DumpC2J" >> $GITHUB_ENV
 
