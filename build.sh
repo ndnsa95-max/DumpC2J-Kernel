@@ -86,7 +86,7 @@ fi
 # ==========================================
 KERNEL_DIR=$(pwd)
 MAIN=$(readlink -f "$KERNEL_DIR/..")
-CLANG_DIR="$MAIN/toolchains/clang"
+CLANG_DIR="${CLANG_PATH:-$MAIN/toolchains/clang}"
 OUT_DIR="$KERNEL_DIR/out"
 ZIMAGE_DIR="$OUT_DIR/arch/arm64/boot"
 MODULES_DIR="$KERNEL_DIR/.root_modules"
