@@ -580,6 +580,7 @@ fi
 # ==========================================
 mkdir -p "$OUT_DIR"
 make O="$OUT_DIR" CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="$KERNEL_KCFLAGS" LDFLAGS="$KERNEL_LDFLAGS" DumpC2J_defconfig || exit 1
+scripts/config --file "$OUT_DIR/.config" -d CONFIG_VDSO32 -d CONFIG_COMPAT_VDSO
 
 # Root config
 case "$VARIANT" in
@@ -618,7 +619,7 @@ if [ "$HARDENED" == "off" ]; then
     scripts/config --file "$OUT_DIR/.config" -d CONFIG_CPU_MITIGATIONS -d CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY
 
 # Greenforce Clang does not include ARM32 target
-scripts/config --file "$OUT_DIR/.config" -d CONFIG_VDSO32
+scripts/config --file "$OUT_DIR/.config" -d CONFIG_VDSO32 -d CONFIG_COMPAT_VDSO
 fi
 
 # LTO config
