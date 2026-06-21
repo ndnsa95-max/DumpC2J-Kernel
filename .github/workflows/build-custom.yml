@@ -210,8 +210,9 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
+          cd $GITHUB_WORKSPACE
           wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
-          GFORCE_DIR="$(pwd)/greenforce-clang"
+          GFORCE_DIR="$GITHUB_WORKSPACE/greenforce-clang"
           echo "CLANG_PATH=$GFORCE_DIR" >> $GITHUB_ENV
           echo "$GFORCE_DIR/bin" >> $GITHUB_PATH
 
