@@ -90,10 +90,8 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p "$HOME/toolchains/aosp-clang"
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-6.6/clang-r547379.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C "$HOME/toolchains/aosp-clang"
-          echo "$HOME/toolchains/aosp-clang/bin" >> $GITHUB_PATH
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
 
       - name: Setup AnyKernel3
         run: |
@@ -202,10 +200,8 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p "$HOME/toolchains/aosp-clang"
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-6.6/clang-r547379.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C "$HOME/toolchains/aosp-clang"
-          echo "$HOME/toolchains/aosp-clang/bin" >> $GITHUB_PATH
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
 
       - name: Setup AnyKernel3
         run: |
@@ -314,10 +310,8 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p "$HOME/toolchains/aosp-clang"
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-6.6/clang-r547379.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C "$HOME/toolchains/aosp-clang"
-          echo "$HOME/toolchains/aosp-clang/bin" >> $GITHUB_PATH
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
 
       - name: Setup AnyKernel3
         run: |
@@ -426,10 +420,8 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p "$HOME/toolchains/aosp-clang"
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-6.6/clang-r547379.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C "$HOME/toolchains/aosp-clang"
-          echo "$HOME/toolchains/aosp-clang/bin" >> $GITHUB_PATH
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
 
       - name: Setup AnyKernel3
         run: |
@@ -501,10 +493,8 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p "$HOME/toolchains/aosp-clang"
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-6.6/clang-r547379.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C "$HOME/toolchains/aosp-clang"
-          echo "$HOME/toolchains/aosp-clang/bin" >> $GITHUB_PATH
+          mkdir -p toolchains
+          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
 
       - name: Setup AnyKernel3
         run: |
