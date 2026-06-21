@@ -5,6 +5,10 @@ UTS_MACHINE=$1
 CC_VERSION="$2"
 LD=$3
 
+if [ -n "$KBUILD_COMPILER_STRING" ]; then
+	CC_VERSION="$KBUILD_COMPILER_STRING"
+fi
+
 if test -z "$KBUILD_BUILD_USER"; then
 	LINUX_COMPILE_BY=$(whoami | sed 's/\\/\\\\/')
 else

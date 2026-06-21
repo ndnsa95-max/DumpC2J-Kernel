@@ -90,8 +90,16 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+          echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
+          echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=adennnqt" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=DumpC2J" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -200,8 +208,16 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+          echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
+          echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=adennnqt" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=DumpC2J" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -310,8 +326,16 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+          echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
+          echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=adennnqt" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=DumpC2J" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -420,8 +444,16 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+          echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
+          echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=adennnqt" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=DumpC2J" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -493,8 +525,16 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          mkdir -p toolchains
-          git clone --depth=1 https://github.com/ZyCromerZ/Clang.git -b main toolchains/clang
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
+          echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
+          echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=adennnqt" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=DumpC2J" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
