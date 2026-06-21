@@ -97,6 +97,7 @@ jobs:
           ./antman -S
           echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
           echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -212,6 +213,7 @@ jobs:
           ./antman -S
           echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
           echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -327,6 +329,7 @@ jobs:
           ./antman -S
           echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
           echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -442,6 +445,7 @@ jobs:
           ./antman -S
           echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
           echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
@@ -520,6 +524,7 @@ jobs:
           ./antman -S
           echo "CLANG_PATH=$HOME/toolchains/neutron-clang" >> $GITHUB_ENV
           echo "$HOME/toolchains/neutron-clang/bin" >> $GITHUB_PATH
+          echo "KBUILD_COMPILER_STRING=Neutron Clang 23.0.0" >> $GITHUB_ENV
 
       - name: Setup AnyKernel3
         run: |
