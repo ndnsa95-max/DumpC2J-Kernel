@@ -210,11 +210,10 @@ jobs:
 
       - name: Download Clang Toolchain
         run: |
-          export TOOL_CLANG_DIR="$HOME/toolchains/greenforce-clang"
-          mkdir -p "$TOOL_CLANG_DIR"
           wget --no-verbose -O- https://raw.githubusercontent.com/greenforce-project/greenforce_clang/refs/heads/main/get_clang.sh | bash
-          echo "CLANG_PATH=$TOOL_CLANG_DIR" >> $GITHUB_ENV
-          echo "$TOOL_CLANG_DIR/bin" >> $GITHUB_PATH
+          GFORCE_DIR="$(pwd)/greenforce-clang"
+          echo "CLANG_PATH=$GFORCE_DIR" >> $GITHUB_ENV
+          echo "$GFORCE_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup AnyKernel3
         run: |
