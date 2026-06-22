@@ -31,6 +31,7 @@ no_magisk_check=1
 
 # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
 . tools/ak3-core.sh
+BB=busybox
 
 kernel_version=$(cat /proc/version | awk -F '-' '{print $1}' | awk '{print $3}')
 
