@@ -3,6 +3,9 @@
 
 UTS_MACHINE=$1
 CC_VERSION="$2"
+if [ -n "$KBUILD_COMPILER_STRING" ]; then
+    CC_VERSION="$KBUILD_COMPILER_STRING"
+fi
 LD=$3
 
 if test -z "$KBUILD_BUILD_USER"; then
