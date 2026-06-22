@@ -32,12 +32,8 @@ no_magisk_check=1
 # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
 . tools/ak3-core.sh
 
-kernel_version=$(cat /proc/version | awk -F '-' '{print $1}' | awk '{print $3}')
-
 ui_print " "
 ui_print " DumpC2J Kernel"
-ui_print " Running : $kernel_version"
-ui_print " "
 ui_print " Flashing boomkernel, please wait..."
 ui_print " "
 
