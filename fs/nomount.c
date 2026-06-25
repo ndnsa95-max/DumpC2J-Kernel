@@ -5,7 +5,7 @@
 #include <linux/statfs.h>
 #include <linux/fs_struct.h>
 #include <linux/version.h>
-#include "nomount.h"
+#include <linux/nomount.h>
 
 static struct kmem_cache *nm_rule_cachep, *nm_dir_cachep, *nm_uid_cachep;
 atomic_t nm_active_rules = ATOMIC_INIT(0);
