@@ -1531,6 +1531,14 @@ SULOG_EXECVE_EOF
         # YukiSU-specific compat fixes (sh_user_path dup, execveat_ksud 4-arg, escape_to_root type)
         if [ "$MANAGER" = "yukisu" ]; then
             fix_yukisu_susfs_compat
+        elif [ "$MANAGER" = "mambosu" ]; then
+            if [ -f "$SUCOMPAT_C" ]; then
+                count=$(grep -c "^static char __user \*sh_user_path(void)" "$SUCOMPAT_C" 2>/dev/null || echo 0)
+                if [ "$count" -gt 1 ]; then
+                    awk '/^static char __user \*sh_user_path\(void\)/{c++; if(c>1){skip=1}} skip && /^}/{skip=0; next} !skip' "$SUCOMPAT_C" > "${SUCOMPAT_C}.tmp" && mv "${SUCOMPAT_C}.tmp" "$SUCOMPAT_C"
+                    echo "[SUSFS-Fixup] sucompat.c: Removed duplicate sh_user_path (mambosu)"
+                fi
+            fi
         fi
         ;;
     ksu-next)
