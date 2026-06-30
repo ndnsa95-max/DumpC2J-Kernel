@@ -1504,8 +1504,13 @@ case "$MANAGER" in
         fi
         # Fix adb_root call signature mismatch in syscall_event_bridge.c
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
-            sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
-            echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            ADB_ROOT_C="$KSU_KERNEL/feature/adb_root.c"
+            if [ -f "$ADB_ROOT_C" ] && grep -q 'ksu_adb_root_handle_execve(const char' "$ADB_ROOT_C" 2>/dev/null; then
+                sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            else
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Skipping adb_root fix (1-arg signature)"
+            fi
         fi
         # Restore ksu_sulog_capture_root_execve in event.c if missing
         if [ -f "$SULOG_EVENT_C" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_C" 2>/dev/null; then
@@ -1601,8 +1606,13 @@ VFS_STUBS_EOF
         fi
         # Fix adb_root call signature mismatch in syscall_event_bridge.c
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
-            sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
-            echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            ADB_ROOT_C="$KSU_KERNEL/feature/adb_root.c"
+            if [ -f "$ADB_ROOT_C" ] && grep -q 'ksu_adb_root_handle_execve(const char' "$ADB_ROOT_C" 2>/dev/null; then
+                sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            else
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Skipping adb_root fix (1-arg signature)"
+            fi
         fi
         # Restore ksu_sulog_capture_root_execve in event.c if missing
         if [ -f "$SULOG_EVENT_C" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_C" 2>/dev/null; then
@@ -1642,8 +1652,13 @@ SULOG_EXECVE_EOF
         fi
         # Fix adb_root call signature mismatch
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
-            sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
-            echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            ADB_ROOT_C="$KSU_KERNEL/feature/adb_root.c"
+            if [ -f "$ADB_ROOT_C" ] && grep -q 'ksu_adb_root_handle_execve(const char' "$ADB_ROOT_C" 2>/dev/null; then
+                sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            else
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Skipping adb_root fix (1-arg signature)"
+            fi
         fi
         # Restore ksu_sulog_capture_root_execve if missing
         if [ -f "$SULOG_EVENT_C" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_C" 2>/dev/null; then
@@ -1682,8 +1697,13 @@ SULOG_EXECVE_EOF
         fi
         # Fix adb_root call signature mismatch
         if [ -f "$BRIDGE_C" ] && grep -q 'ksu_adb_root_handle_execve((struct pt_regs \*)regs)' "$BRIDGE_C" 2>/dev/null; then
-            sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
-            echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            ADB_ROOT_C="$KSU_KERNEL/feature/adb_root.c"
+            if [ -f "$ADB_ROOT_C" ] && grep -q 'ksu_adb_root_handle_execve(const char' "$ADB_ROOT_C" 2>/dev/null; then
+                sed -i 's|ksu_adb_root_handle_execve((struct pt_regs \*)regs)|ksu_adb_root_handle_execve((const char *)PT_REGS_PARM1(regs), (void __user ***)\&PT_REGS_PARM3(regs))|' "$BRIDGE_C"
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Fixed adb_root call signature"
+            else
+                echo "[SUSFS-Fixup] syscall_event_bridge.c: Skipping adb_root fix (1-arg signature)"
+            fi
         fi
         # Restore ksu_sulog_capture_root_execve if missing
         if [ -f "$SULOG_EVENT_C" ] && ! grep -q "ksu_sulog_capture_root_execve" "$SULOG_EVENT_C" 2>/dev/null; then
