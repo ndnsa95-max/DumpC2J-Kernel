@@ -62,6 +62,9 @@ fi
 if [ "$SPOOF_UNAME" == "on" ]; then
     # Spoof to standard Android stock naming (remove custom localversion)
     sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g' arch/arm64/configs/konoha_defconfig
+    sed -i 's/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g' arch/arm64/configs/konoha_defconfig
+elif [ "$SPOOF_UNAME" == "off" ]; then
+    sed -i 's/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/g' arch/arm64/configs/konoha_defconfig
 fi
 
 # ==========================================
@@ -142,10 +145,22 @@ if [ "$VARIANT" != "stock" ] && [ -z "$ROOT" ]; then
     echo " 3) Sukisu"
     echo " 4) YukiSU"
     echo " 5) ReSukiSU"
-    echo " 7) APatch (KernelPatch)"
-    echo " 8) FolkPatch (KernelPatch)"
-    read -p "Enter choice [1-8] (default 1): " _c
+    echo " 6) APatch (KernelPatch)"
+    echo " 7) FolkPatch (KernelPatch)"
+    read -p "Enter choice [1-7] (default 1): " _c
     case "${_c:-1}" in 2) ROOT="ksu" ;; 3) ROOT="sukisu" ;; 4) ROOT="yukisu" ;; 5) ROOT="resukisu" ;; 6) ROOT="apatch" ;; 7) ROOT="folkpatch" ;; *) ROOT="ksu-next" ;; esac
+fi
+
+# Guard: block known-broken/unsupported variant+root combinations
+if [ "$VARIANT" == "susfs" ] && [ "$ROOT" == "sukisu" ]; then
+    echo "[-] SukiSU-Ultra + SUSFS is currently unsupported (linker conflicts with susfs4ksu)."
+    echo "[-] Use variant=root (root-only) with root=sukisu, or pick a different root solution for SUSFS."
+    exit 1
+fi
+if [ "$VARIANT" == "root" ] && [ "$ROOT" == "resukisu" ]; then
+    echo "[-] ReSukiSU requires SUSFS — root-only mode is not supported."
+    echo "[-] Use variant=susfs with root=resukisu, or pick a different root solution for root-only."
+    exit 1
 fi
 
 # 5. KPM (only for sukisu/yukisu/resukisu/apatch/folkpatch)
@@ -238,6 +253,18 @@ fi
 [ -z "$DATA_EXPLOIT" ] && DATA_EXPLOIT="on"
 [ -z "$AUTOFDO" ] && AUTOFDO="on"
 
+
+# Guard: block known-broken/unsupported variant+root combos
+if [ "$VARIANT" == "susfs" ] && [ "$ROOT" == "sukisu" ]; then
+    echo "[-] sukisu + SUSFS currently causes bootloop (init hook conflict with susfs4ksu)."
+    echo "[-] Blocked until upstream conflict is resolved."
+    exit 1
+fi
+if [ "$ROOT" == "resukisu" ]; then
+    echo "[-] ReSukiSU (root/susfs) currently crashes on app open."
+    echo "[-] Use root=ksu-next, sukisu, apatch, or folkpatch instead."
+    exit 1
+fi
 
 # ==========================================
 # Resolve Root Solution
@@ -362,7 +389,7 @@ else
 fi
 
 # Run SUSFS fixup if needed (after root module is symlinked/created)
-if [ "$VARIANT" == "susfs" ] && [ "$VARIANT" != "stock" ]; then
+if [ "$VARIANT" == "susfs" ]; then
     echo "[+] Running SUSFS compatibility fixup ($ROOT)..."
     bash "$KERNEL_DIR/ksu_susfs_fixup.sh" "$KERNEL_DIR/drivers/kernelsu" "$ROOT"
 fi
@@ -404,7 +431,7 @@ echo ""
 # KPM Tools Setup (kptools + kpimg)
 # ==========================================
 if [ "$KPM" == "on" ]; then
-    KPM_TOOLS_DIR="$MODULES_DIR/kpm_tools"
+    KPM_TOOLS_DIR="$MODULES_DIR/kpm_tools/$ROOT"
     mkdir -p "$KPM_TOOLS_DIR"
 
     if [ "$ROOT" == "apatch" ] || [ "$ROOT" == "folkpatch" ]; then
@@ -708,7 +735,7 @@ make "${MAKE_ARGS[@]}" || { echo "[-] Build failed!"; exit 1; }
 # ==========================================
 # KPM Post-Build Patching
 # ==========================================
-if [ "$KPM" == "on" ]; then
+if [ "$KPM" == "on" ] && [ "$KPM_PATCH" == "on" ]; then
     echo "=========================================="
     echo "[+] Patching kernel Image with KernelPatch..."
     echo "=========================================="
@@ -765,17 +792,6 @@ for img in Image.gz-dtb Image.gz Image; do
 done
 
 
-echo "Applying Custom Kernel Name and Spoof Uname..."
-if [ -n "$KERNEL_NAME" ]; then
-    sed -i "s/CONFIG_LOCALVERSION=".*"/CONFIG_LOCALVERSION="$KERNEL_NAME"/g" arch/arm64/configs/konoha_defconfig
-fi
-
-if [ "$SPOOF_UNAME" == "on" ]; then
-    # Ensure SUSFS spoof is enabled
-    sed -i "s/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/g" arch/arm64/configs/konoha_defconfig
-elif [ "$SPOOF_UNAME" == "off" ]; then
-    sed -i "s/CONFIG_KSU_SUSFS_SPOOF_UNAME=y/# CONFIG_KSU_SUSFS_SPOOF_UNAME is not set/g" arch/arm64/configs/konoha_defconfig
-fi
 
 # Build filename
 ZIP_SUFFIX=""
