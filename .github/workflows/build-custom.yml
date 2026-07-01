@@ -46,7 +46,6 @@ on:
           - sukisu
           - yukisu
           - resukisu
-          - mambosu
           - apatch
           - folkpatch
         default: resukisu

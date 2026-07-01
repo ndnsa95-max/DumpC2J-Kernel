@@ -17,7 +17,7 @@ trap cleanup EXIT
 #   hz=100|250|1000       Timer frequency (default: 250)
 #   hardened=on|off       CPU mitigations (default: off)
 #   variant=stock|root|susfs  Build variant (default: stock)
-#   root=ksu-next|sukisu|resukisu|mambosu  Root solution (default: ksu-next)
+#   root=ksu-next|sukisu|resukisu  Root solution (default: ksu-next)
 #   kpm=on|off            KPM support (default: off, sukisu/resukisu only)
 #   kpm_superkey=STRING   KPM SuperKey (required if kpm=on)
 #   kpm_patch=on|off      Inject kpimg with kptools (default: on; resukisu defaults off)
@@ -142,11 +142,10 @@ if [ "$VARIANT" != "stock" ] && [ -z "$ROOT" ]; then
     echo " 3) Sukisu"
     echo " 4) YukiSU"
     echo " 5) ReSukiSU"
-    echo " 6) MamboSU"
     echo " 7) APatch (KernelPatch)"
     echo " 8) FolkPatch (KernelPatch)"
     read -p "Enter choice [1-8] (default 1): " _c
-    case "${_c:-1}" in 2) ROOT="ksu" ;; 3) ROOT="sukisu" ;; 4) ROOT="yukisu" ;; 5) ROOT="resukisu" ;; 6) ROOT="mambosu" ;; 7) ROOT="apatch" ;; 8) ROOT="folkpatch" ;; *) ROOT="ksu-next" ;; esac
+    case "${_c:-1}" in 2) ROOT="ksu" ;; 3) ROOT="sukisu" ;; 4) ROOT="yukisu" ;; 5) ROOT="resukisu" ;; 6) ROOT="apatch" ;; 7) ROOT="folkpatch" ;; *) ROOT="ksu-next" ;; esac
 fi
 
 # 5. KPM (only for sukisu/yukisu/resukisu/apatch/folkpatch)
@@ -248,7 +247,6 @@ case "$ROOT" in
     sukisu)   ROOT_REPO="https://github.com/sukisu-ultra/sukisu-ultra.git"; REPO_NAME="sukisu-ultra"; BRANCH="main" ;;
     yukisu)   ROOT_REPO="https://github.com/Anatdx/YukiSU.git"; REPO_NAME="YukiSU"; BRANCH="main" ;;
     resukisu) ROOT_REPO="https://github.com/ReSukiSU/ReSukiSU.git"; REPO_NAME="ReSukiSU"; BRANCH="main" ;;
-    mambosu)  ROOT_REPO="https://github.com/RapliVx/KernelSU.git"; REPO_NAME="MamboSU"; BRANCH="master" ;;
     apatch)   REPO_NAME="APatch" ;;
     folkpatch) REPO_NAME="FolkPatch" ;;
     *)        ROOT_REPO="https://github.com/KernelSU-Next/KernelSU-Next.git"; REPO_NAME="KernelSU-Next"; BRANCH="dev"; ROOT="ksu-next" ;;

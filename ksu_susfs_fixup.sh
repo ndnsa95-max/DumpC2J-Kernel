@@ -5,11 +5,11 @@
 # Surgically repairs SUSFS integration after 10_enable_susfs_for_ksu.patch
 # which may partially fail on different KernelSU forks.
 #
-# Supported managers: KernelSU-Next, Sukisu-Ultra, MamboSU
+# Supported managers: KernelSU-Next, Sukisu-Ultra
 # (ReSukiSU has native SUSFS — should be skipped upstream in build.sh)
 #
 # Usage: ksu_susfs_fixup.sh <path-to-ksu/kernel> [manager-name]
-#   manager-name: ksu-next | sukisu | mambosu (auto-detected if omitted)
+#   manager-name: ksu-next | sukisu (auto-detected if omitted)
 # ==========================================================================
 set -e
 
@@ -17,7 +17,7 @@ KSU_KERNEL="$1"
 MANAGER_HINT="$2"
 
 if [ -z "$KSU_KERNEL" ] || [ ! -d "$KSU_KERNEL" ]; then
-    echo "Usage: $0 <path-to-ksu/kernel> [ksu-next|sukisu|mambosu]"
+    echo "Usage: $0 <path-to-ksu/kernel> [ksu-next|sukisu]"
     exit 1
 fi
 
@@ -37,7 +37,6 @@ detect_manager() {
             sukisu)    echo "sukisu" ;;
             yukisu)    echo "yukisu" ;;
             resukisu)  echo "resukisu" ;;
-            mambosu)   echo "mambosu" ;;
             apatch)    echo "apatch" ;;
             folkpatch) echo "folkpatch" ;;
             *)         echo "unknown" ;;
@@ -53,14 +52,10 @@ detect_manager() {
             *sukisu*|*SukiSU*|*Sukisu*)      echo "sukisu"; return ;;
             *YukiSU*|*yukisu*)               echo "yukisu"; return ;;
             *ReSukiSU*|*resukisu*)           echo "resukisu"; return ;;
-            *RapliVx*|*MamboSU*|*mambosu*)   echo "mambosu"; return ;;
         esac
     fi
 
     if [ -f "$kdir/feature/adb_root.c" ]; then
-        if grep -q "sulog_init_heap" "$kdir/supercall/supercall.c" 2>/dev/null; then
-            echo "mambosu"; return
-        fi
         echo "sukisu"; return
     fi
 
@@ -596,7 +591,7 @@ EXECVE_STUB_EOF
 
 
 # --------------------------------------------------------------------------
-# MamboSU / Sukisu-Ultra: kprobe-based reboot interception needs SUSFS forwarding
+# Sukisu-Ultra: kprobe-based reboot interception needs SUSFS forwarding
 # --------------------------------------------------------------------------
 fix_kprobe_supercall() {
     if [ ! -f "$SUPERCALL_C" ]; then return; fi
@@ -677,7 +672,7 @@ REBOOT_HANDLER_EOF
 }
 
 # --------------------------------------------------------------------------
-# MamboSU / Sukisu-Ultra: Fix sulog type mismatch in ksu_handle_execve_sucompat
+# Sukisu-Ultra: Fix sulog type mismatch in ksu_handle_execve_sucompat
 # --------------------------------------------------------------------------
 fix_sulog_type_mismatch() {
     if [ ! -f "$SUCOMPAT_C" ]; then return; fi
@@ -700,7 +695,7 @@ fix_sulog_type_mismatch() {
 }
 
 # --------------------------------------------------------------------------
-# MamboSU / Sukisu-Ultra: Add ksu_handle_execveat_sucompat + ksu_handle_execveat
+# Sukisu-Ultra: Add ksu_handle_execveat_sucompat + ksu_handle_execveat
 # and guard old ksu_handle_execve_sucompat from ksu_syscall_table dependency
 # --------------------------------------------------------------------------
 fix_execveat_handlers() {
@@ -708,7 +703,7 @@ fix_execveat_handlers() {
 
     # Guard old ksu_handle_execve_sucompat with #ifndef CONFIG_KSU_SUSFS
     # (it uses ksu_syscall_table from syscall_hook_manager.c which is not compiled)
-    if [ "$MANAGER" != "ksu-next" ] && [ "$MANAGER" != "mambosu" ] && [ "$MANAGER" != "sukisu" ] && grep -q "ksu_handle_execve_sucompat" "$SUCOMPAT_C" 2>/dev/null && \
+    if [ "$MANAGER" != "ksu-next" ] && [ "$MANAGER" != "sukisu" ] && grep -q "ksu_handle_execve_sucompat" "$SUCOMPAT_C" 2>/dev/null && \
        grep -q "ksu_syscall_table" "$SUCOMPAT_C" 2>/dev/null && \
        ! grep -q '#ifndef CONFIG_KSU_SUSFS' "$SUCOMPAT_C" 2>/dev/null; then
 
@@ -1486,7 +1481,7 @@ fix_app_zygote_bypass() {
 }
 
 case "$MANAGER" in
-    resukisu|sukisu|yukisu|mambosu)
+    resukisu|sukisu|yukisu)
         fix_sulog_type_mismatch
         fix_execveat_handlers
         if [ "$MANAGER" = "yukisu" ]; then
@@ -1536,14 +1531,6 @@ SULOG_EXECVE_EOF
         # YukiSU-specific compat fixes (sh_user_path dup, execveat_ksud 4-arg, escape_to_root type)
         if [ "$MANAGER" = "yukisu" ]; then
             fix_yukisu_susfs_compat
-        elif [ "$MANAGER" = "mambosu" ]; then
-            if [ -f "$SUCOMPAT_C" ]; then
-                count=$(grep -c "^static char __user \*sh_user_path(void)" "$SUCOMPAT_C" 2>/dev/null || echo 0)
-                if [ "$count" -gt 1 ]; then
-                    awk '/^static char __user \*sh_user_path\(void\)/{c++; if(c>1){skip=1}} skip && /^}/{skip=0; next} !skip' "$SUCOMPAT_C" > "${SUCOMPAT_C}.tmp" && mv "${SUCOMPAT_C}.tmp" "$SUCOMPAT_C"
-                    echo "[SUSFS-Fixup] sucompat.c: Removed duplicate sh_user_path (mambosu)"
-                fi
-            fi
         fi
         ;;
     ksu-next)
