@@ -34,6 +34,7 @@ detect_manager() {
         case "$hint" in
             ksu)       echo "ksu" ;;
             ksu-next)  echo "ksu-next" ;;
+            kowsu)     echo "kowsu" ;;
             sukisu)    echo "sukisu" ;;
             yukisu)    echo "yukisu" ;;
             resukisu)  echo "resukisu" ;;
@@ -350,7 +351,7 @@ EOF
 struct user_arg_ptr;
 EOF
 
-    if ! grep -q "ksu_handle_execveat_init" "$SUCOMPAT_C" 2>/dev/null; then
+    if grep -q "ksu_handle_execveat_init" "$SUCOMPAT_C" 2>/dev/null; then
         cat >> "$SUCOMPAT_H" << 'EOF'
 int ksu_handle_execveat_init(struct filename *filename,
     struct user_arg_ptr *argv_user, struct user_arg_ptr *envp_user);
@@ -369,7 +370,6 @@ EOF
 
     echo "[SUSFS-Fixup] sucompat.h: Rebuilt clean"
 }
-rebuild_sucompat_h
 
 # ==========================================================================
 # [SHARED] sucompat.c — ksu_handle_stat version gate + ksu_handle_execveat_init
@@ -434,6 +434,7 @@ int ksu_handle_execveat_init(struct filename *filename,
 EXECVEAT_EOF
         echo "[SUSFS-Fixup] sucompat.c: Added ksu_handle_execveat_init"
     fi
+rebuild_sucompat_h
 fi
 
 # ==========================================================================
@@ -845,9 +846,14 @@ fix_ksu_next_kbuild() {
         if ! grep -q "infra/symbol_resolver.o" "$KBUILD" 2>/dev/null && [ -f "$KSU_KERNEL/infra/symbol_resolver.c" ]; then
             sed -i '/hook\/setuid_hook.o/a kernelsu-objs += infra/symbol_resolver.o' "$KBUILD"
         fi
-        # Arch-specific patch memory and syscall hook
-        if ! grep -q "hook/arm64/patch_memory.o" "$KBUILD" 2>/dev/null && [ -d "$KSU_KERNEL/hook/arm64" ]; then
-            sed -i '/hook\/tp_marker.o/a\
+        echo "[SUSFS-Fixup] Kbuild: Restored hook objects for $MANAGER"
+    fi
+
+    # Arch-specific patch memory and syscall hook — checked independently of
+    # need_restore, since SUSFS patch can strip just these entries while
+    # leaving hook/syscall_event_bridge.o etc intact (seen on kowsu).
+    if ! grep -q "hook/arm64/patch_memory.o" "$KBUILD" 2>/dev/null && [ -d "$KSU_KERNEL/hook/arm64" ]; then
+        sed -i '/hook\/setuid_hook.o/a\
 ifeq ($(CONFIG_ARM64),y)\
 kernelsu-objs += hook/arm64/patch_memory.o\
 kernelsu-objs += hook/arm64/syscall_hook.o\
@@ -855,8 +861,7 @@ else ifeq ($(CONFIG_X86_64),y)\
 kernelsu-objs += hook/x86_64/patch_memory.o\
 kernelsu-objs += hook/x86_64/syscall_hook.o\
 endif' "$KBUILD"
-        fi
-        echo "[SUSFS-Fixup] Kbuild: Restored hook objects for $MANAGER"
+        echo "[SUSFS-Fixup] Kbuild: Restored arch-specific syscall_hook.o"
     fi
 }
 
@@ -1542,7 +1547,7 @@ SULOG_EXECVE_EOF
             fix_yukisu_susfs_compat
         fi
         ;;
-    ksu-next)
+    ksu-next|kowsu)
         fix_sulog_type_mismatch
         fix_ksu_next_kbuild
         fix_ksu_next_bridge
