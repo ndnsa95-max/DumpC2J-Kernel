@@ -1735,3 +1735,22 @@ echo "[SUSFS-Fixup] All compatibility fixups applied for $MANAGER!"
 # --------------------------------------------------------------------------
 # fix_backup_sepolicy_leak — prevent backup_sepolicy from being overwritten
 # --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
+# Guard call site of ksu_handle_execve_sucompat in syscall_event_bridge.c
+# The definition in sucompat.c is guarded behind #ifndef CONFIG_KSU_SUSFS,
+# but this call site was unconditional -> "undefined symbol" at link time
+# when SUSFS is enabled.
+# --------------------------------------------------------------------------
+if [ -f "$BRIDGE_C" ] && grep -q "} else if (ksu_su_compat_enabled) {" "$BRIDGE_C" 2>/dev/null; then
+    sed -i '/} else if (ksu_su_compat_enabled) {/,/^    }$/c\
+    }\
+#ifndef CONFIG_KSU_SUSFS\
+    else if (ksu_su_compat_enabled) {\
+        ret = ksu_handle_execve_sucompat(filename_user, orig_nr, regs);\
+        ksu_sulog_emit_pending(pending_root_execve, ret, GFP_KERNEL);\
+        return ret;\
+    }\
+#endif' "$BRIDGE_C"
+    echo "[SUSFS-Fixup] syscall_event_bridge.c: Guarded ksu_handle_execve_sucompat call site for SUSFS"
+fi
